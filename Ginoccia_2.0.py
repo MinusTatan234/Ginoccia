@@ -164,7 +164,7 @@ def interface():
     )
     button_2.place(
         x=1329.0,
-        y=771.0,
+        y=698.0,
         width=230.0,
         height=60.0
     )
@@ -232,7 +232,21 @@ def interface():
         width=230.0,
         height=60.0
     )
-
+    button_image_7 = PhotoImage(
+        file=relative_to_assets("button_7.png"))
+    button_7 = Button(
+        image=button_image_7,
+        borderwidth=0,
+        highlightthickness=0,
+        command=lambda: print("button_7 clicked"),
+        relief="flat"
+    )
+    button_7.place(
+        x=1330.0,
+        y=773.0,
+        width=230.0,
+        height=60.0
+    )
     entry_image_1 = PhotoImage(
         file=relative_to_assets("entry_1.png"))
     entry_bg_1 = canvas.create_image(
