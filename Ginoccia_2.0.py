@@ -13,7 +13,7 @@ stop_threads = False
 
 # Function to set serial connection
 def set_connection():
-    while True:
+    while not stop_threads:
         try:
             serial_connection = serial.Serial('COM4', 9600)
             return serial_connection
@@ -91,10 +91,8 @@ def interface():
         return ASSETS_PATH / Path(path)
 
     window = Tk()
-    window.protocol("WM_DELETE_WINDOW", on_window_close)
-
     window.geometry("1574x915")
-    window.configure(bg="#FFFFFF")
+    window.protocol("WM_DELETE_WINDOW", on_window_close)
 
     canvas = Canvas(
         window,
@@ -149,8 +147,8 @@ def interface():
         relief="flat"
     )
     button_1.place(
-        x=23.0,
-        y=90.0,
+        x=1329.0,
+        y=848.0,
         width=230.0,
         height=60.0
     )
@@ -166,7 +164,7 @@ def interface():
     )
     button_2.place(
         x=1329.0,
-        y=848.0,
+        y=771.0,
         width=230.0,
         height=60.0
     )
@@ -215,6 +213,22 @@ def interface():
     button_5.place(
         x=23.0,
         y=9.0,
+        width=230.0,
+        height=60.0
+    )
+
+    button_image_6 = PhotoImage(
+        file=relative_to_assets("button_6.png"))
+    button_6 = Button(
+        image=button_image_6,
+        borderwidth=0,
+        highlightthickness=0,
+        command=lambda: print("button_6 clicked"),
+        relief="flat"
+    )
+    button_6.place(
+        x=23.0,
+        y=90.0,
         width=230.0,
         height=60.0
     )
@@ -345,7 +359,7 @@ def interface():
         justify="center",
     )
 
-    #Add a slider from 0 to 12
+    # Add a slider from 0 to 12
     slider = tk.Scale(
         window,
         from_=0,
