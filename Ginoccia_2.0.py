@@ -8,26 +8,33 @@ import tkinter as tk
 # Explicit imports to satisfy Flake8
 from tkinter import Tk, Canvas, Entry, Text, Button, PhotoImage, ttk
 
+# Implementation flags
 stop_threads = False
+ser = None
+activation = False
+connect = 0
 
 
 # Function to set serial connection
-def set_connection():
-    while not stop_threads:
-        try:
-            serial_connection = serial.Serial('COM4', 9600)
-            return serial_connection
+def connect_btn():
+    global connect
+    connect = 1
 
-        except Exception as e:
-            print("The connection was not established ", e)
-            print("Reconnecting...")
-            time.sleep(1)
+
+def close_btn():
+    global connect, ser, activation
+    connect = 2
+    if ser is not None:
+        ser.close()
+        ser = None
+        activation = False
 
 
 # Function to read serial port
 def read_serial_port(arduino):
+    global activation
     try:
-        while not stop_threads:
+        while not stop_threads and activation is True:
             data = arduino.readline().decode().strip()
             if data:
                 print(data)
@@ -38,8 +45,9 @@ def read_serial_port(arduino):
 
 # Function to send data by the serial port
 def send_data(arduino):
+    global arduino_lock, activation
     try:
-        while not stop_threads:
+        while not stop_threads and activation is True:
             if k.is_pressed('e'):
                 cadena = 'e'
                 arduino_lock.acquire()  # Disable serial port reading
@@ -54,7 +62,7 @@ def send_data(arduino):
                 arduino.write(cadena.encode('ascii'))  # Send data
                 time.sleep(0.02)
                 arduino_lock.release()  # Enable serial port reading
-            time.sleep(0.02)
+            time.sleep(0.03)
 
     except Exception as e:
         print("Error sending data ", e)
@@ -175,7 +183,7 @@ def interface():
         image=button_image_3,
         borderwidth=0,
         highlightthickness=0,
-        command=lambda: print("button_3 clicked"),
+        command=close_btn,
         relief="flat"
     )
     button_3.place(
@@ -191,7 +199,7 @@ def interface():
         image=button_image_4,
         borderwidth=0,
         highlightthickness=0,
-        command=lambda: print("button_4 clicked"),
+        command=connect_btn,
         relief="flat"
     )
     button_4.place(
@@ -398,28 +406,46 @@ interface_thread = threading.Thread(target=interface)
 interface_thread.start()
 
 # Create serial connection
-ser = None
+while not stop_threads:
+    if ser is None and connect == 1:
+        while not stop_threads and connect == 1:
+            try:
+                ser = serial.Serial('COM4', 9600)
+                if ser is not None:
+                    connect = 0
 
-if ser is not None:
-    arduino_lock = threading.Lock()  # Lock to ensure mutual exclusion between sending and receiving data
+            except Exception as e:
+                print("The connection was not established ", e)
+                print("Reconnecting...")
+                time.sleep(1)
+    elif connect == 2:
+        print("Connection close")
+        connect = 0
 
-    # Starting the reading thread
-    reading_thread = threading.Thread(target=read_serial_port, args=(ser,))
-    reading_thread.start()
+    # time.sleep(0.1)
+    if ser is not None:
+        activation = True
+        arduino_lock = threading.Lock()  # Lock to ensure mutual exclusion between sending and receiving data
 
-    # Starting the sending thread
-    sending_thread = threading.Thread(target=send_data, args=(ser,))
-    sending_thread.start()
+        # Starting the reading thread
+        reading_thread = threading.Thread(target=read_serial_port, args=(ser,))
+        reading_thread.start()
 
-    # Wait up to all threads end
-    reading_thread.join()
-    sending_thread.join()
+        # Starting the sending thread
+        sending_thread = threading.Thread(target=send_data, args=(ser,))
+        sending_thread.start()
 
-    # Close connection
-    ser.close()
-    print("Serial connection closed")
+        # Wait up to all threads end
+        reading_thread.join()
+        sending_thread.join()
 
-else:
-    print("Serial connection could not be established")
+        if activation is True:
+            # Close connection
+            ser.close()
+            print("Serial connection closed")
+
+    elif ser is None:
+        print("Serial connection could not be established")
+    time.sleep(0.5)
 
 interface_thread.join()
