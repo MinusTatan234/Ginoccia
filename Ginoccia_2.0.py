@@ -398,7 +398,7 @@ interface_thread = threading.Thread(target=interface)
 interface_thread.start()
 
 # Create serial connection
-ser = set_connection()
+ser = None
 
 if ser is not None:
     arduino_lock = threading.Lock()  # Lock to ensure mutual exclusion between sending and receiving data
