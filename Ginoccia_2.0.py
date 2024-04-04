@@ -13,26 +13,12 @@ stop_threads = False
 ser = None
 activation = False
 connect = 0
-
-
-# Function to set serial connection
-def connect_btn():
-    global connect
-    connect = 1
-
-
-def close_btn():
-    global connect, ser, activation
-    connect = 2
-    if ser is not None:
-        ser.close()
-        ser = None
-        activation = False
+indicator = None
 
 
 # Function to read serial port
 def read_serial_port(arduino):
-    global activation
+    global activation, stop_threads
     try:
         while not stop_threads and activation is True:
             data = arduino.readline().decode().strip()
@@ -41,11 +27,12 @@ def read_serial_port(arduino):
             time.sleep(0.03)  # Short delay to avoid saturating the processor
     except Exception as e:
         print("Error reading the serial port ", e)
+        stop_threads = True
 
 
 # Function to send data by the serial port
 def send_data(arduino):
-    global arduino_lock, activation
+    global arduino_lock, activation, stop_threads
     try:
         while not stop_threads and activation is True:
             if k.is_pressed('e'):
@@ -66,9 +53,11 @@ def send_data(arduino):
 
     except Exception as e:
         print("Error sending data ", e)
+        stop_threads = True
 
 
 def interface():
+    global indicator
 
     OUTPUT_PATH = Path(__file__).parent
     ASSETS_PATH = OUTPUT_PATH / Path(fr"{str(OUTPUT_PATH)}\assets\frame0")
@@ -86,14 +75,22 @@ def interface():
         selected_option = combo_box_leg.get()
         print("Opción seleccionada:", selected_option)
 
-    '''
-    def on_spinbox_modified():
-        selected_value = Slider.get()
-        print("Valor seleccionado:", selected_value)
-    '''
-
     def on_slider_changed(value):
         print("Valor seleccionado:", value)
+
+    # Function to set serial connection
+    def connect_btn():
+        global connect
+        connect = 1
+
+    def close_btn():
+        global connect, ser, activation
+        connect = 2
+        indicator.config(bg="gray")
+        if ser is not None:
+            ser.close()
+            ser = None
+            activation = False
 
     def relative_to_assets(path: str) -> Path:
         return ASSETS_PATH / Path(path)
@@ -354,7 +351,13 @@ def interface():
         fill="#000000",
         font=("Inter Black", 13 * -1)
     )
-
+    indicator = tk.Label(
+        window,
+        width=5,
+        height=2,
+        bg="gray"
+    )
+    indicator.place(x=1250, y=60)
     # Add ComboBox
     options = ["Right", "Left"]
     combo_box_leg = ttk.Combobox(
@@ -413,6 +416,7 @@ while not stop_threads:
                 ser = serial.Serial('COM4', 9600)
                 if ser is not None:
                     connect = 0
+                    indicator.config(bg="green")
 
             except Exception as e:
                 print("The connection was not established ", e)
@@ -446,6 +450,6 @@ while not stop_threads:
 
     elif ser is None:
         print("Serial connection could not be established")
-    time.sleep(0.5)
+    time.sleep(0.2)
 
 interface_thread.join()
