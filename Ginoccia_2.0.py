@@ -2,11 +2,13 @@ import time
 import serial
 import threading
 import keyboard as k
+import os
+import subprocess
 from pathlib import Path
 import tkinter as tk
 # from tkinter import *
 # Explicit imports to satisfy Flake8
-from tkinter import Tk, Canvas, Entry, Text, Button, PhotoImage, ttk
+from tkinter import Tk, Canvas, Entry, Text, Button, PhotoImage, ttk, filedialog
 
 # Implementation flags
 stop_threads = False
@@ -124,6 +126,15 @@ def interface():
         entry_1.config(state="disabled")  # Entry text box disable
         slider.config(state="normal")  # slider enable
 
+    def open_folder():
+        # get the directory within the current script
+        path = os.path.dirname(__file__)
+        # Open the files explorer in the same project path
+        rute = filedialog.askopenfilename(initialdir=path, title="Select archive")
+        # If a file is selected
+        if rute:
+            subprocess.Popen(["start", "", rute], shell=True)
+
     def relative_to_assets(path: str) -> Path:
         return ASSETS_PATH / Path(path)
 
@@ -180,7 +191,7 @@ def interface():
         image=button_image_1,
         borderwidth=0,
         highlightthickness=0,
-        command=lambda: print("button_1 clicked"),
+        command=open_folder,
         relief="flat"
     )
     button_1.place(
