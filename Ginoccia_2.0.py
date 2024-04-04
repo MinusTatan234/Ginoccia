@@ -2,44 +2,43 @@ import time
 import serial
 import threading
 import keyboard as k
+import os
+import subprocess
 from pathlib import Path
 import tkinter as tk
 # from tkinter import *
 # Explicit imports to satisfy Flake8
-from tkinter import Tk, Canvas, Entry, Text, Button, PhotoImage, ttk
+from tkinter import Tk, Canvas, Entry, Text, Button, PhotoImage, ttk, filedialog
 
+# Implementation flags
 stop_threads = False
-
-
-# Function to set serial connection
-def set_connection():
-    while not stop_threads:
-        try:
-            serial_connection = serial.Serial('COM4', 9600)
-            return serial_connection
-
-        except Exception as e:
-            print("The connection was not established ", e)
-            print("Reconnecting...")
-            time.sleep(1)
+ser = None
+activation = False
+connect = 0
+indicator = None
+config_mode_flag = True
+study_mode_flag = False
 
 
 # Function to read serial port
 def read_serial_port(arduino):
+    global activation, stop_threads
     try:
-        while not stop_threads:
+        while not stop_threads and activation is True:
             data = arduino.readline().decode().strip()
             if data:
                 print(data)
             time.sleep(0.03)  # Short delay to avoid saturating the processor
     except Exception as e:
         print("Error reading the serial port ", e)
+        stop_threads = True
 
 
 # Function to send data by the serial port
 def send_data(arduino):
+    global arduino_lock, activation, stop_threads
     try:
-        while not stop_threads:
+        while not stop_threads and activation is True:
             if k.is_pressed('e'):
                 cadena = 'e'
                 arduino_lock.acquire()  # Disable serial port reading
@@ -54,13 +53,15 @@ def send_data(arduino):
                 arduino.write(cadena.encode('ascii'))  # Send data
                 time.sleep(0.02)
                 arduino_lock.release()  # Enable serial port reading
-            time.sleep(0.02)
+            time.sleep(0.03)
 
     except Exception as e:
         print("Error sending data ", e)
+        stop_threads = True
 
 
 def interface():
+    global indicator
 
     OUTPUT_PATH = Path(__file__).parent
     ASSETS_PATH = OUTPUT_PATH / Path(fr"{str(OUTPUT_PATH)}\assets\frame0")
@@ -78,14 +79,61 @@ def interface():
         selected_option = combo_box_leg.get()
         print("Opción seleccionada:", selected_option)
 
-    '''
-    def on_spinbox_modified():
-        selected_value = Slider.get()
-        print("Valor seleccionado:", selected_value)
-    '''
-
     def on_slider_changed(value):
         print("Valor seleccionado:", value)
+
+    # Function to set serial connection
+    def connect_btn():
+        global connect
+        connect = 1
+
+    def close_btn():
+        global connect, ser, activation
+        connect = 2
+        indicator.config(bg="gray")
+        if ser is not None:
+            ser.close()
+            ser = None
+            activation = False
+
+    def config_mode_btn():
+        global config_mode_flag, study_mode_flag, ser, activation, connect
+        config_mode_flag = True
+        study_mode_flag = False
+        button_3.config(state="disabled")  # close btn disable
+        button_4.config(state="disabled")  # config btn disable
+        button_5.config(state="disabled")  # config btn disable
+        button_6.config(state="normal")  # study btn enable
+        button_7.config(state="disabled")  # Export to excel btn disable
+        entry_1.config(state="normal")  # Entry text box enable
+        slider.config(state="disabled")  # slider disable
+        connect = 2
+        indicator.config(bg="gray")
+        if ser is not None:
+            ser.close()
+            ser = None
+            activation = False
+
+    def study_mode_btn():
+        global config_mode_flag, study_mode_flag
+        config_mode_flag = False
+        study_mode_flag = True
+        button_3.config(state="normal")  # close btn enable
+        button_4.config(state="normal")  # config btn enable
+        button_5.config(state="normal")  # config btn enable
+        button_6.config(state="disabled")  # study btn disable
+        button_7.config(state="normal")  # Export to excel btn enable
+        entry_1.config(state="disabled")  # Entry text box disable
+        slider.config(state="normal")  # slider enable
+
+    def open_folder():
+        # get the directory within the current script
+        path = os.path.dirname(__file__)
+        # Open the files explorer in the same project path
+        rute = filedialog.askopenfilename(initialdir=path, title="Select archive")
+        # If a file is selected
+        if rute:
+            subprocess.Popen(["start", "", rute], shell=True)
 
     def relative_to_assets(path: str) -> Path:
         return ASSETS_PATH / Path(path)
@@ -143,7 +191,7 @@ def interface():
         image=button_image_1,
         borderwidth=0,
         highlightthickness=0,
-        command=lambda: print("button_1 clicked"),
+        command=open_folder,
         relief="flat"
     )
     button_1.place(
@@ -175,8 +223,9 @@ def interface():
         image=button_image_3,
         borderwidth=0,
         highlightthickness=0,
-        command=lambda: print("button_3 clicked"),
-        relief="flat"
+        command=close_btn,
+        relief="flat",
+        state="disabled"
     )
     button_3.place(
         x=1000.0,
@@ -191,8 +240,9 @@ def interface():
         image=button_image_4,
         borderwidth=0,
         highlightthickness=0,
-        command=lambda: print("button_4 clicked"),
-        relief="flat"
+        command=connect_btn,
+        relief="flat",
+        state="disabled"
     )
     button_4.place(
         x=1000.0,
@@ -207,8 +257,9 @@ def interface():
         image=button_image_5,
         borderwidth=0,
         highlightthickness=0,
-        command=lambda: print("button_5 clicked"),
-        relief="flat"
+        command=config_mode_btn,
+        relief="flat",
+        state="disabled"
     )
     button_5.place(
         x=23.0,
@@ -223,8 +274,9 @@ def interface():
         image=button_image_6,
         borderwidth=0,
         highlightthickness=0,
-        command=lambda: print("button_6 clicked"),
-        relief="flat"
+        command=study_mode_btn,
+        relief="flat",
+        state="normal"
     )
     button_6.place(
         x=23.0,
@@ -239,7 +291,8 @@ def interface():
         borderwidth=0,
         highlightthickness=0,
         command=lambda: print("button_7 clicked"),
-        relief="flat"
+        relief="flat",
+        state="disabled"
     )
     button_7.place(
         x=1330.0,
@@ -258,7 +311,8 @@ def interface():
         bd=0,
         bg="#D9D9D9",
         fg="#000716",
-        highlightthickness=0
+        highlightthickness=0,
+        state="normal"
     )
     entry_1.bind('<Return>', on_enter_pressed)
     entry_1.place(
@@ -346,7 +400,13 @@ def interface():
         fill="#000000",
         font=("Inter Black", 13 * -1)
     )
-
+    indicator = tk.Label(
+        window,
+        width=5,
+        height=2,
+        bg="gray"
+    )
+    indicator.place(x=1250, y=60)
     # Add ComboBox
     options = ["Right", "Left"]
     combo_box_leg = ttk.Combobox(
@@ -380,7 +440,9 @@ def interface():
         to=12,
         tickinterval=1,
         orient=tk.HORIZONTAL,
-        command=on_slider_changed)
+        command=on_slider_changed,
+        state="disabled"
+    )
 
     slider.place(
         x=1338.0,
@@ -398,28 +460,47 @@ interface_thread = threading.Thread(target=interface)
 interface_thread.start()
 
 # Create serial connection
-ser = set_connection()
+while not stop_threads:
+    if ser is None and connect == 1:
+        while not stop_threads and connect == 1:
+            try:
+                ser = serial.Serial('COM4', 9600)
+                if ser is not None:
+                    connect = 0
+                    indicator.config(bg="green")
 
-if ser is not None:
-    arduino_lock = threading.Lock()  # Lock to ensure mutual exclusion between sending and receiving data
+            except Exception as e:
+                print("The connection was not established ", e)
+                print("Reconnecting...")
+                time.sleep(1)
+    elif connect == 2:
+        print("Connection close")
+        connect = 0
 
-    # Starting the reading thread
-    reading_thread = threading.Thread(target=read_serial_port, args=(ser,))
-    reading_thread.start()
+    # time.sleep(0.1)
+    if ser is not None:
+        activation = True
+        arduino_lock = threading.Lock()  # Lock to ensure mutual exclusion between sending and receiving data
 
-    # Starting the sending thread
-    sending_thread = threading.Thread(target=send_data, args=(ser,))
-    sending_thread.start()
+        # Starting the reading thread
+        reading_thread = threading.Thread(target=read_serial_port, args=(ser,))
+        reading_thread.start()
 
-    # Wait up to all threads end
-    reading_thread.join()
-    sending_thread.join()
+        # Starting the sending thread
+        sending_thread = threading.Thread(target=send_data, args=(ser,))
+        sending_thread.start()
 
-    # Close connection
-    ser.close()
-    print("Serial connection closed")
+        # Wait up to all threads end
+        reading_thread.join()
+        sending_thread.join()
 
-else:
-    print("Serial connection could not be established")
+        if activation is True:
+            # Close connection
+            ser.close()
+            print("Serial connection closed")
+
+    elif ser is None:
+        print("Serial connection could not be established")
+    time.sleep(0.2)
 
 interface_thread.join()
