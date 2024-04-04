@@ -14,6 +14,8 @@ ser = None
 activation = False
 connect = 0
 indicator = None
+config_mode_flag = True
+study_mode_flag = False
 
 
 # Function to read serial port
@@ -91,6 +93,36 @@ def interface():
             ser.close()
             ser = None
             activation = False
+
+    def config_mode_btn():
+        global config_mode_flag, study_mode_flag, ser, activation, connect
+        config_mode_flag = True
+        study_mode_flag = False
+        button_3.config(state="disabled")  # close btn disable
+        button_4.config(state="disabled")  # config btn disable
+        button_5.config(state="disabled")  # config btn disable
+        button_6.config(state="normal")  # study btn enable
+        button_7.config(state="disabled")  # Export to excel btn disable
+        entry_1.config(state="normal")  # Entry text box enable
+        slider.config(state="disabled")  # slider disable
+        connect = 2
+        indicator.config(bg="gray")
+        if ser is not None:
+            ser.close()
+            ser = None
+            activation = False
+
+    def study_mode_btn():
+        global config_mode_flag, study_mode_flag
+        config_mode_flag = False
+        study_mode_flag = True
+        button_3.config(state="normal")  # close btn enable
+        button_4.config(state="normal")  # config btn enable
+        button_5.config(state="normal")  # config btn enable
+        button_6.config(state="disabled")  # study btn disable
+        button_7.config(state="normal")  # Export to excel btn enable
+        entry_1.config(state="disabled")  # Entry text box disable
+        slider.config(state="normal")  # slider enable
 
     def relative_to_assets(path: str) -> Path:
         return ASSETS_PATH / Path(path)
@@ -181,7 +213,8 @@ def interface():
         borderwidth=0,
         highlightthickness=0,
         command=close_btn,
-        relief="flat"
+        relief="flat",
+        state="disabled"
     )
     button_3.place(
         x=1000.0,
@@ -197,7 +230,8 @@ def interface():
         borderwidth=0,
         highlightthickness=0,
         command=connect_btn,
-        relief="flat"
+        relief="flat",
+        state="disabled"
     )
     button_4.place(
         x=1000.0,
@@ -212,8 +246,9 @@ def interface():
         image=button_image_5,
         borderwidth=0,
         highlightthickness=0,
-        command=lambda: print("button_5 clicked"),
-        relief="flat"
+        command=config_mode_btn,
+        relief="flat",
+        state="disabled"
     )
     button_5.place(
         x=23.0,
@@ -228,8 +263,9 @@ def interface():
         image=button_image_6,
         borderwidth=0,
         highlightthickness=0,
-        command=lambda: print("button_6 clicked"),
-        relief="flat"
+        command=study_mode_btn,
+        relief="flat",
+        state="normal"
     )
     button_6.place(
         x=23.0,
@@ -244,7 +280,8 @@ def interface():
         borderwidth=0,
         highlightthickness=0,
         command=lambda: print("button_7 clicked"),
-        relief="flat"
+        relief="flat",
+        state="disabled"
     )
     button_7.place(
         x=1330.0,
@@ -263,7 +300,8 @@ def interface():
         bd=0,
         bg="#D9D9D9",
         fg="#000716",
-        highlightthickness=0
+        highlightthickness=0,
+        state="normal"
     )
     entry_1.bind('<Return>', on_enter_pressed)
     entry_1.place(
@@ -391,7 +429,9 @@ def interface():
         to=12,
         tickinterval=1,
         orient=tk.HORIZONTAL,
-        command=on_slider_changed)
+        command=on_slider_changed,
+        state="disabled"
+    )
 
     slider.place(
         x=1338.0,
