@@ -12,6 +12,10 @@ from tkinter import Tk, Canvas, Entry, Button, PhotoImage, ttk, filedialog
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.pyplot as plt
 import numpy as np
+from PIL import Image, ImageTk
+import cv2
+import math
+import mediapipe as mp
 
 
 # Implementation flags
@@ -23,6 +27,7 @@ indicator = None
 config_mode_flag = True
 study_mode_flag = False
 data = ""
+selected_option = ""
 
 
 def serial_connection():
@@ -131,8 +136,9 @@ def interface():
         print("Texto ingresado:", text)
 
     def show_selected_option(event):
-        selected_option = combo_box_leg.get()
-        print("Opción seleccionada:", selected_option)
+        global selected_option
+        selected_option = str(combo_box_leg.get())
+        print(selected_option)
 
     def on_slider_changed(value):
         print("Valor seleccionado:", value)
@@ -212,6 +218,7 @@ def interface():
             if self.root.is_plot_running:
                 self.data[:-1] = self.data[1:]
                 self.data[-1] = float(data)  # Extraer un solo elemento
+                # self.data[-1] = np.random.rand() * 10
                 self.time = np.append(self.time[1:], self.time[-1] + 0.2)
                 self.line.set_xdata(self.time)
                 self.line.set_ydata(self.data)
@@ -240,8 +247,127 @@ def interface():
             self.ax.set_ylabel("Eje Y")  # Nombre del eje Y
             self.canvas.draw()  # Dibuja la nueva área de trazado
 
+    class CameraViewer:
+        def __init__(self, root, position_original=(0, 0), size_original=(640, 480),
+                     position_knee=(660, 0), size_knee=(640, 480)):
+            self.root = root
+            self.position_original = position_original
+            self.size_original = size_original
+            self.position_knee = position_knee
+            self.size_knee = size_knee
+            self.video_label_original = tk.Label(root)
+            self.video_label_original.place(x=position_original[0], y=position_original[1], width=size_original[0],
+                                            height=size_original[1])
+            self.video_label_knee = tk.Label(root)
+            self.video_label_knee.place(x=position_knee[0], y=position_knee[1], width=size_knee[0], height=size_knee[1])
+            self.is_video_playing = False
+            self.capture = cv2.VideoCapture(0)  # Abre la cámara
+            self.fps = 30  # Tasa de frames por segundo
+            self.mp_pose = mp.solutions.pose
+            self.pose = self.mp_pose.Pose(static_image_mode=False)
 
+        def right_side(self, results, width, height):
+            # X & Y coordinates
+            hip_xr = int(results.pose_landmarks.landmark[24].x * width)
+            hip_yr = int(results.pose_landmarks.landmark[24].y * height)
+            knee_xr = int(results.pose_landmarks.landmark[26].x * width)
+            knee_yr = int(results.pose_landmarks.landmark[26].y * height)
+            ankle_xr = int(results.pose_landmarks.landmark[28].x * width)
+            ankle_yr = int(results.pose_landmarks.landmark[28].y * height)
 
+            # Law of cosines
+            Ar = math.sqrt(((ankle_xr - knee_xr) ** 2) + ((ankle_yr - knee_yr) ** 2))
+            Br = math.sqrt(((ankle_xr - hip_xr) ** 2) + ((ankle_yr - hip_yr) ** 2))
+            Cr = math.sqrt(((hip_xr - knee_xr) ** 2) + ((hip_yr - knee_yr) ** 2))
+            try:
+                dr = math.degrees(math.acos(((Ar ** 2) - (Br ** 2) + (Cr ** 2)) / (2 * Ar * Cr)))
+            except:
+                dr = 0
+            deg = "{:.1f}".format(dr)
+
+            return deg, hip_xr, hip_yr, knee_xr, knee_yr, ankle_xr, ankle_yr
+
+        def left_side(self, results, width, height):
+            # X & Y coordinates
+            hip_xl = int(results.pose_landmarks.landmark[23].x * width)
+            hip_yl = int(results.pose_landmarks.landmark[23].y * height)
+            knee_xl = int(results.pose_landmarks.landmark[25].x * width)
+            knee_yl = int(results.pose_landmarks.landmark[25].y * height)
+            ankle_xl = int(results.pose_landmarks.landmark[27].x * width)
+            ankle_yl = int(results.pose_landmarks.landmark[27].y * height)
+
+            # Law of cosines
+            Al = math.sqrt(((ankle_xl - knee_xl) ** 2) + ((ankle_yl - knee_yl) ** 2))
+            Bl = math.sqrt(((ankle_xl - hip_xl) ** 2) + ((ankle_yl - hip_yl) ** 2))
+            Cl = math.sqrt(((hip_xl - knee_xl) ** 2) + ((hip_yl - knee_yl) ** 2))
+            try:
+                dl = math.degrees(math.acos(((Al ** 2) - (Bl ** 2) + (Cl ** 2)) / (2 * Al * Cl)))
+            except:
+                dl = 0
+            deg = "{:.1f}".format(dl)
+
+            return deg, hip_xl, hip_yl, knee_xl, knee_yl, ankle_xl, ankle_yl
+
+        def visualization(self, deg, hip_x, hip_y, knee_x, knee_y, ankle_x, ankle_y, frame):
+            aux_img = np.zeros(frame.shape, np.uint8)
+            cv2.line(aux_img, (hip_x, hip_y), (knee_x, knee_y), (255, 255, 255), 2)
+            cv2.line(aux_img, (knee_x, knee_y), (ankle_x, ankle_y), (255, 255, 255), 2)
+            cv2.line(aux_img, (hip_x, hip_y), (ankle_x, ankle_y), (255, 255, 255), 2)
+
+            contours_r = np.array([[hip_x, hip_y], [knee_x, knee_y], [ankle_x, ankle_y]])
+
+            cv2.fillPoly(aux_img, pts=[contours_r], color=(255, 128, 0))
+            # Output frame with the effects applied
+            output = cv2.addWeighted(frame, 1, aux_img, 0.8, 0)
+
+            cv2.circle(output, (hip_x, hip_y), 6, (0, 255, 255), -1)
+            cv2.circle(output, (knee_x, knee_y), 6, (0, 255, 255), -1)
+            cv2.circle(output, (ankle_x, ankle_y), 6, (0, 255, 255), -1)
+
+            cv2.putText(output, str(deg), (knee_x + 30, knee_y), 1, 1.5, (128, 0, 250), 2)
+            frame2_rgb = cv2.cvtColor(output, cv2.COLOR_BGR2RGB)
+            return frame2_rgb
+
+        def detect_knee(self, frame):
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            height, width, _ = frame_rgb.shape
+            results = self.pose.process(frame_rgb)
+            if results.pose_landmarks:
+                if selected_option == "Right":
+                    degr, hip_xr, hip_yr, knee_xr, knee_yr, ankle_xr, ankle_yr = self.right_side(results, width, height)
+                    frame2_rgb = self.visualization(degr, hip_xr, hip_yr, knee_xr, knee_yr, ankle_xr, ankle_yr, frame)
+                    return frame2_rgb
+                elif selected_option == "Left":
+                    # X & Y coordinates
+                    degl, hip_xl, hip_yl, knee_xl, knee_yl, ankle_xl, ankle_yl = self.left_side(results, width, height)
+                    # Visualization
+                    frame2_rgb = self.visualization(degl, hip_xl, hip_yl, knee_xl, knee_yl, ankle_xl, ankle_yl, frame)
+                    return frame2_rgb
+            return frame_rgb
+
+        def update_video(self):
+            ret, frame = self.capture.read()  # Lee un fotograma de la cámara
+            if ret and self.root.is_video_playing:
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                img_original = Image.fromarray(frame_rgb)
+                img_original = img_original.resize(self.size_original)  # Redimensiona la imagen al tamaño deseado
+                imgtk_original = ImageTk.PhotoImage(image=img_original)
+                self.video_label_original.imgtk = imgtk_original
+                self.video_label_original.configure(image=imgtk_original)
+                frame_with_knee = self.detect_knee(frame)
+                frame_with_knee_rgb = frame_with_knee
+                img_knee = Image.fromarray(frame_with_knee_rgb)
+                img_knee = img_knee.resize(self.size_knee)  # Redimensiona la imagen al tamaño deseado
+                imgtk_knee = ImageTk.PhotoImage(image=img_knee)
+                self.video_label_knee.imgtk = imgtk_knee
+                self.video_label_knee.configure(image=imgtk_knee)
+            self.root.after(int(1000 / self.fps), self.update_video)  # Actualiza con la tasa de frames por segundo
+
+        def start_video(self):
+            self.is_video_playing = True
+
+        def stop_video(self):
+            self.is_video_playing = False
 
     def relative_to_assets(path: str) -> Path:
         return ASSETS_PATH / Path(path)
@@ -561,7 +687,15 @@ def interface():
     )
 
     window.is_plot_running = False
+    window.is_video_playing = True
+    size_original = (640, 360)
+    size_knee = (640, 360)
     plot_updater = PlotUpdater(window)
+    camera_viewer = CameraViewer(window, position_original=(14, 171), size_original=size_original,
+                                 position_knee=(661, 171), size_knee=size_knee)
+
+    camera_viewer.start_video()
+    camera_viewer.update_video()
     window.resizable(False, False)
     window.mainloop()
 
