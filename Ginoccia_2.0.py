@@ -8,7 +8,11 @@ from pathlib import Path
 import tkinter as tk
 # from tkinter import *
 # Explicit imports to satisfy Flake8
-from tkinter import Tk, Canvas, Entry, Text, Button, PhotoImage, ttk, filedialog
+from tkinter import Tk, Canvas, Entry, Button, PhotoImage, ttk, filedialog
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.pyplot as plt
+import numpy as np
+
 
 # Implementation flags
 stop_threads = False
@@ -18,11 +22,61 @@ connect = 0
 indicator = None
 config_mode_flag = True
 study_mode_flag = False
+data = ""
+
+
+def serial_connection():
+    # Create serial connection
+    global arduino_lock, connect, ser, activation, window
+    while not stop_threads:
+        if ser is None and connect == 1:
+            while not stop_threads and connect == 1:
+                try:
+                    ser = serial.Serial('COM4', 9600)
+                    if ser is not None:
+                        connect = 0
+
+                        indicator.config(bg="green")
+                        window.is_plot_running = True
+
+                except Exception as e:
+                    print("The connection was not established ", e)
+                    print("Reconnecting...")
+                    time.sleep(1)
+        elif connect == 2:
+            print("Connection close")
+            connect = 0
+
+        # time.sleep(0.1)
+        if ser is not None:
+            activation = True
+            arduino_lock = threading.Lock()  # Lock to ensure mutual exclusion between sending and receiving data
+
+            # Starting the reading thread
+            reading_thread = threading.Thread(target=read_serial_port, args=(ser,))
+            reading_thread.start()
+
+            # Starting the sending thread
+            sending_thread = threading.Thread(target=send_data, args=(ser,))
+            sending_thread.start()
+
+            # Wait up to all threads end
+            reading_thread.join()
+            sending_thread.join()
+
+            if activation is True:
+                # Close connection
+                ser.close()
+                print("Serial connection closed")
+
+        elif ser is None:
+            print("Serial connection could not be established")
+        time.sleep(0.2)
 
 
 # Function to read serial port
 def read_serial_port(arduino):
-    global activation, stop_threads
+    global activation, stop_threads, data
     try:
         while not stop_threads and activation is True:
             data = arduino.readline().decode().strip()
@@ -61,7 +115,7 @@ def send_data(arduino):
 
 
 def interface():
-    global indicator
+    global indicator, window
 
     OUTPUT_PATH = Path(__file__).parent
     ASSETS_PATH = OUTPUT_PATH / Path(fr"{str(OUTPUT_PATH)}\assets\frame0")
@@ -70,6 +124,7 @@ def interface():
         global stop_threads
         stop_threads = True
         window.destroy()
+        window.quit()
 
     def on_enter_pressed(event):
         text = entry_1.get()
@@ -95,6 +150,7 @@ def interface():
             ser.close()
             ser = None
             activation = False
+            window.is_plot_running = False
 
     def config_mode_btn():
         global config_mode_flag, study_mode_flag, ser, activation, connect
@@ -113,6 +169,7 @@ def interface():
             ser.close()
             ser = None
             activation = False
+            window.is_plot_running = False
 
     def study_mode_btn():
         global config_mode_flag, study_mode_flag
@@ -135,11 +192,63 @@ def interface():
         if rute:
             subprocess.Popen(["start", "", rute], shell=True)
 
+    class PlotUpdater:
+        def __init__(self, root):
+            self.root = root
+            self.fig, self.ax = plt.subplots(figsize=(6.4, 4))
+            self.canvas = FigureCanvasTkAgg(self.fig, master=root)
+            self.canvas.get_tk_widget().place(x=14, y=545)  # Ajusta las coordenadas x e y del gráfico
+            self.ax.set_xlim(0, 20)  # Modifica el rango del eje x
+            self.ax.set_ylim(0, 10)
+            self.ax.set_title("Título del Gráfico")  # Agrega título al gráfico
+            self.ax.set_xlabel("Eje X")  # Nombre del eje X
+            self.ax.set_ylabel("Eje Y")  # Nombre del eje Y
+            self.data = np.random.rand(10)
+            self.time = np.arange(10)
+            self.line, = self.ax.plot(self.time, self.data)
+            self.update_plot()
+
+        def update_plot(self):
+            if self.root.is_plot_running:
+                self.data[:-1] = self.data[1:]
+                self.data[-1] = float(data)  # Extraer un solo elemento
+                self.time = np.append(self.time[1:], self.time[-1] + 0.2)
+                self.line.set_xdata(self.time)
+                self.line.set_ydata(self.data)
+                self.ax.relim()
+                self.ax.autoscale_view()
+                # Ajustar los límites del eje x para que vaya de 0 a 20
+                self.ax.set_xlim(self.time[0], self.time[-1] + 1)
+                self.canvas.draw()
+            else:
+                self.reset_plot()
+            self.root.after(200, self.update_plot)  # Actualiza cada segundo
+
+        def start_plot(self):
+            self.root.is_plot_running = True
+
+        def stop_plot(self):
+            self.root.is_plot_running = False
+
+        def reset_plot(self):
+            self.ax.cla()  # Limpia el área de trazado
+            self.ax.set_xlim(0, 20)  # Reinicia el rango del eje x
+            self.ax.set_ylim(0, 10)  # Reinicia el rango del eje y
+            self.line, = self.ax.plot([], [])  # Crea una nueva línea vacía
+            self.ax.set_title("Título del Gráfico")  # Agrega título al gráfico
+            self.ax.set_xlabel("Eje X")  # Nombre del eje X
+            self.ax.set_ylabel("Eje Y")  # Nombre del eje Y
+            self.canvas.draw()  # Dibuja la nueva área de trazado
+
+
+
+
     def relative_to_assets(path: str) -> Path:
         return ASSETS_PATH / Path(path)
 
     window = Tk()
-    window.geometry("1574x915")
+    window.geometry("1574x950")
+    window.configure(bg="white")
     window.protocol("WM_DELETE_WINDOW", on_window_close)
 
     canvas = Canvas(
@@ -451,56 +560,17 @@ def interface():
         height=60
     )
 
+    window.is_plot_running = False
+    plot_updater = PlotUpdater(window)
     window.resizable(False, False)
     window.mainloop()
 
 
 # Starting the interface
-interface_thread = threading.Thread(target=interface)
-interface_thread.start()
 
-# Create serial connection
-while not stop_threads:
-    if ser is None and connect == 1:
-        while not stop_threads and connect == 1:
-            try:
-                ser = serial.Serial('COM4', 9600)
-                if ser is not None:
-                    connect = 0
-                    indicator.config(bg="green")
+start_connection = threading.Thread(target=serial_connection)
+start_connection.start()
 
-            except Exception as e:
-                print("The connection was not established ", e)
-                print("Reconnecting...")
-                time.sleep(1)
-    elif connect == 2:
-        print("Connection close")
-        connect = 0
+interface()
 
-    # time.sleep(0.1)
-    if ser is not None:
-        activation = True
-        arduino_lock = threading.Lock()  # Lock to ensure mutual exclusion between sending and receiving data
-
-        # Starting the reading thread
-        reading_thread = threading.Thread(target=read_serial_port, args=(ser,))
-        reading_thread.start()
-
-        # Starting the sending thread
-        sending_thread = threading.Thread(target=send_data, args=(ser,))
-        sending_thread.start()
-
-        # Wait up to all threads end
-        reading_thread.join()
-        sending_thread.join()
-
-        if activation is True:
-            # Close connection
-            ser.close()
-            print("Serial connection closed")
-
-    elif ser is None:
-        print("Serial connection could not be established")
-    time.sleep(0.2)
-
-interface_thread.join()
+start_connection.join()
