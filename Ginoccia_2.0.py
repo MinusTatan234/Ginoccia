@@ -26,9 +26,13 @@ connect = 0
 indicator = None
 config_mode_flag = True
 study_mode_flag = False
+
+
 data = ""
 selected_option = ""
-
+degr = "0"
+degl = "0"
+text = ""
 
 def serial_connection():
     # Create serial connection
@@ -132,8 +136,11 @@ def interface():
         window.quit()
 
     def on_enter_pressed(event):
+        global text
         text = entry_1.get()
         print("Texto ingresado:", text)
+        canvas.itemconfig(tagOrId=cr_patient, text=text)
+        entry_1.delete(0,tk.END)
 
     def show_selected_option(event):
         global selected_option
@@ -158,10 +165,26 @@ def interface():
             activation = False
             window.is_plot_running = False
 
+    def save_btn():
+        global degl,degr
+        if config_mode_flag is True and study_mode_flag is False:
+            if selected_option == "Right":
+                canvas.itemconfig(tagOrId=change_right, text=str(degr))
+            elif selected_option == "Left":
+                canvas.itemconfig(tagOrId=change_left, text=str(degl))
+        else:
+            pass
+
     def config_mode_btn():
-        global config_mode_flag, study_mode_flag, ser, activation, connect
+        global config_mode_flag, study_mode_flag, ser, activation, connect, text, degr, degl
         config_mode_flag = True
         study_mode_flag = False
+        degr = "0"
+        degl = "0"
+        text = ""
+        canvas.itemconfig(tagOrId=change_right, text=degr)
+        canvas.itemconfig(tagOrId=change_left, text=degl)
+        canvas.itemconfig(tagOrId=cr_patient, text="")
         button_3.config(state="disabled")  # close btn disable
         button_4.config(state="disabled")  # config btn disable
         button_5.config(state="disabled")  # config btn disable
@@ -178,16 +201,18 @@ def interface():
             window.is_plot_running = False
 
     def study_mode_btn():
-        global config_mode_flag, study_mode_flag
-        config_mode_flag = False
-        study_mode_flag = True
-        button_3.config(state="normal")  # close btn enable
-        button_4.config(state="normal")  # config btn enable
-        button_5.config(state="normal")  # config btn enable
-        button_6.config(state="disabled")  # study btn disable
-        button_7.config(state="normal")  # Export to excel btn enable
-        entry_1.config(state="disabled")  # Entry text box disable
-        slider.config(state="normal")  # slider enable
+        global config_mode_flag, study_mode_flag, text
+
+        if (float(degr) > 0 or float(degr) > 0) and text != "":
+            config_mode_flag = False
+            study_mode_flag = True
+            button_3.config(state="normal")  # close btn enable
+            button_4.config(state="normal")  # config btn enable
+            button_5.config(state="normal")  # config btn enable
+            button_6.config(state="disabled")  # study btn disable
+            button_7.config(state="normal")  # Export to excel btn enable
+            entry_1.config(state="disabled")  # Entry text box disable
+            slider.config(state="normal")  # slider enable
 
     def open_folder():
         # get the directory within the current script
@@ -289,6 +314,7 @@ def interface():
 
         def left_side(self, results, width, height):
             # X & Y coordinates
+
             hip_xl = int(results.pose_landmarks.landmark[23].x * width)
             hip_yl = int(results.pose_landmarks.landmark[23].y * height)
             knee_xl = int(results.pose_landmarks.landmark[25].x * width)
@@ -329,6 +355,7 @@ def interface():
             return frame2_rgb
 
         def detect_knee(self, frame):
+            global degl, degr
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             height, width, _ = frame_rgb.shape
             results = self.pose.process(frame_rgb)
@@ -442,7 +469,7 @@ def interface():
         image=button_image_2,
         borderwidth=0,
         highlightthickness=0,
-        command=lambda: print("button_2 clicked"),
+        command=save_btn,
         relief="flat"
     )
     button_2.place(
@@ -489,6 +516,7 @@ def interface():
     button_image_5 = PhotoImage(
         file=relative_to_assets("button_5.png"))
     button_5 = Button(
+        window,
         image=button_image_5,
         borderwidth=0,
         highlightthickness=0,
@@ -539,7 +567,7 @@ def interface():
         file=relative_to_assets("entry_1.png"))
     entry_bg_1 = canvas.create_image(
         1445.0,
-        224.0,
+        113.0,
         image=entry_image_1
     )
     entry_1 = Entry(
@@ -552,20 +580,34 @@ def interface():
     entry_1.bind('<Return>', on_enter_pressed)
     entry_1.place(
         x=1350.0,
-        y=194.0,
+        y=85.0,
         width=190.0,
         height=58.0
     )
 
+    txt_image_1 = PhotoImage(
+        file=relative_to_assets("entry_1.png"))
+    entry_bg_1 = canvas.create_image(
+        1445.0,
+        224.0,
+        image=entry_image_1
+    )
     canvas.create_text(
         1338.0,
-        171.0,
+        60,
         anchor="nw",
         text="Name of patient",
         fill="#000000",
         font=("Inter Black", 13 * -1)
     )
-
+    canvas.create_text(
+        1338.0,
+        171.0,
+        anchor="nw",
+        text="Current patient",
+        fill="#000000",
+        font=("Inter Black", 13 * -1)
+    )
     canvas.create_text(
         420.0,
         12.0,
@@ -600,7 +642,7 @@ def interface():
         image=image_image_6
     )
 
-    canvas.create_text(
+    change_right = canvas.create_text( #right
         727.0,
         73.0,
         anchor="nw",
@@ -609,11 +651,19 @@ def interface():
         font=("Inter Black", 24 * -1)
     )
 
-    canvas.create_text(
+    change_left = canvas.create_text( #left
         448.0,
         66.0,
         anchor="nw",
         text="0",
+        fill="#000000",
+        font=("Inter Black", 24 * -1)
+    )
+    cr_patient = canvas.create_text(
+        1350.0,
+        212.0,
+        anchor="nw",
+        text="",
         fill="#000000",
         font=("Inter Black", 24 * -1)
     )
