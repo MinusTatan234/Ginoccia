@@ -33,6 +33,8 @@ selected_option = ""
 degr = "0"
 degl = "0"
 text = ""
+slider_value = "0"
+
 
 def serial_connection():
     # Create serial connection
@@ -99,9 +101,18 @@ def read_serial_port(arduino):
 
 # Function to send data by the serial port
 def send_data(arduino):
-    global arduino_lock, activation, stop_threads
+    global arduino_lock, activation, stop_threads, slider_value
+    aux = slider_value
     try:
         while not stop_threads and activation is True:
+            if slider_value != aux:
+                cadena = str(slider_value)
+                arduino_lock.acquire()
+                time.sleep(0.02)
+                arduino.write(cadena.encode('ascii'))
+                time.sleep(0.02)
+                aux = slider_value
+                arduino_lock.release()
             if k.is_pressed('e'):
                 cadena = 'e'
                 arduino_lock.acquire()  # Disable serial port reading
@@ -147,18 +158,26 @@ def interface():
         selected_option = str(combo_box_leg.get())
         print(selected_option)
 
-    def on_slider_changed(value):
-        print("Valor seleccionado:", value)
+    def on_slider_changed(event):
+        sv = slider.get()
+        # lbl.config(text=f"Valor seleccionado: {sv}")
+
+    def send_last_value(event):
+        global slider_value
+        slider_value = str(slider.get())
+        print(slider_value)
 
     # Function to set serial connection
     def connect_btn():
         global connect
         connect = 1
+        slider.set(0)
 
     def close_btn():
         global connect, ser, activation
         connect = 2
         indicator.config(bg="gray")
+        slider.set(0)
         if ser is not None:
             ser.close()
             ser = None
@@ -182,6 +201,7 @@ def interface():
         degr = "0"
         degl = "0"
         text = ""
+        slider.set(0)
         canvas.itemconfig(tagOrId=change_right, text=degr)
         canvas.itemconfig(tagOrId=change_left, text=degl)
         canvas.itemconfig(tagOrId=cr_patient, text="")
@@ -735,6 +755,9 @@ def interface():
         width=220,
         height=60
     )
+    # lbl = tk.Label(window, text="Selected value: 0")
+    # lbl.pack()
+    slider.bind("<ButtonRelease-1>", send_last_value)
 
     window.is_plot_running = False
     window.is_video_playing = True
