@@ -1,13 +1,9 @@
 import time
 import serial
 import threading
-import keyboard as k
-import os
 import subprocess
 from pathlib import Path
 import tkinter as tk
-# from tkinter import *
-# Explicit imports to satisfy Flake8
 from tkinter import Tk, Canvas, Entry, Button, PhotoImage, ttk, filedialog
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.pyplot as plt
@@ -16,7 +12,13 @@ from PIL import Image, ImageTk
 import cv2
 import math
 import mediapipe as mp
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
+import os
+import pandas as pd
 
+
+_DIR = os.path.dirname(__file__)
 
 # Implementation flags
 stop_threads = False
@@ -24,8 +26,18 @@ ser = None
 activation = False
 connect = 0
 indicator = None
-config_mode_flag = True
+config_mode_flag = False
 study_mode_flag = False
+max_angle_right = 0
+max_angle_left = 0
+position = 0
+torque = 0
+myoware = 0
+set_degr = 0
+set_degl = 0
+counter = 0
+rad = 0
+aux_lock = False
 
 
 data = ""
@@ -36,6 +48,10 @@ text = ""
 slider_value = "0"
 
 
+data_lst = list()
+excel_writer = None
+
+
 def serial_connection():
     # Create serial connection
     global arduino_lock, connect, ser, activation, window
@@ -43,17 +59,17 @@ def serial_connection():
         if ser is None and connect == 1:
             while not stop_threads and connect == 1:
                 try:
-                    ser = serial.Serial('COM4', 9600)
+                    ser = serial.Serial('COM4', 115200, timeout=0.25)
                     if ser is not None:
                         connect = 0
-
                         indicator.config(bg="green")
-                        window.is_plot_running = True
+                        # window.is_plot_running = True
 
                 except Exception as e:
                     print("The connection was not established ", e)
                     print("Reconnecting...")
                     time.sleep(1)
+
         elif connect == 2:
             print("Connection close")
             connect = 0
@@ -87,13 +103,56 @@ def serial_connection():
 
 # Function to read serial port
 def read_serial_port(arduino):
-    global activation, stop_threads, data
+    global activation, stop_threads, data, position, torque, myoware, counter, button_2,\
+        indicator, window, connect, ser, config_mode_flag, study_mode_flag, text, degr, degl, indicator, \
+        button_4, button_5, button_6, button_7, button_8, button_9, button_10, entry_1, slider, rb_a, rb_b, rbs, \
+        combo_box_leg, rad
     try:
         while not stop_threads and activation is True:
             data = arduino.readline().decode().strip()
             if data:
+                counter = 0
+                values = data.split(",")
+                if len(values) >= 2:
+                    rad = abs(float(values[0]))
+                    position = (rad * 180) / math.pi
+                    torque = float(values[1])
+                    myoware = float(values[2])
                 print(data)
+            else:
+                counter = counter + 1
+                if counter >= 2:
+                    slider.set(0)
+                    button_4.config(state="normal")
+                    connect = 2
+                    indicator.config(bg="gray")
+                    config_mode_flag = False
+                    study_mode_flag = False
+                    degr = "0"
+                    degl = "0"
+                    text = ""
+                    button_2.config(state="disabled")
+                    button_5.config(state="disabled")
+                    button_6.config(state="disabled")
+                    button_7.config(state="disabled")
+                    button_8.config(state="disabled")
+                    button_9.config(state="disabled")
+                    button_10.config(state="disabled")
+                    entry_1.config(state="disabled")
+                    slider.config(state="disabled")
+                    rb_a.config(state="disabled")
+                    rb_b.config(state="disabled")
+                    slider.set(0)
+                    rbs.set(None)
+                    combo_box_leg.current(0)
+                    combo_box_leg["state"] = "disabled"
+                    ser.close()
+                    ser = None
+                    activation = False
+                    window.is_plot_running = False
+
             time.sleep(0.03)  # Short delay to avoid saturating the processor
+
     except Exception as e:
         print("Error reading the serial port ", e)
         stop_threads = True
@@ -102,32 +161,9 @@ def read_serial_port(arduino):
 # Function to send data by the serial port
 def send_data(arduino):
     global arduino_lock, activation, stop_threads, slider_value
-    aux = slider_value
     try:
         while not stop_threads and activation is True:
-            if slider_value != aux:
-                cadena = str(slider_value)
-                arduino_lock.acquire()
-                time.sleep(0.02)
-                arduino.write(cadena.encode('ascii'))
-                time.sleep(0.02)
-                aux = slider_value
-                arduino_lock.release()
-            if k.is_pressed('e'):
-                cadena = 'e'
-                arduino_lock.acquire()  # Disable serial port reading
-                time.sleep(0.02)
-                arduino.write(cadena.encode('ascii'))  # Send data
-                time.sleep(0.02)
-                arduino_lock.release()  # Enable serial port reading
-            elif k.is_pressed('a'):
-                cadena = 'a'
-                arduino_lock.acquire()  # Disable serial port reading
-                time.sleep(0.02)
-                arduino.write(cadena.encode('ascii'))  # Send data
-                time.sleep(0.02)
-                arduino_lock.release()  # Enable serial port reading
-            time.sleep(0.03)
+            time.sleep(0.50)
 
     except Exception as e:
         print("Error sending data ", e)
@@ -135,13 +171,22 @@ def send_data(arduino):
 
 
 def interface():
-    global indicator, window
+    global indicator, window, connect, ser, activation, config_mode_flag, study_mode_flag, text, degr, degl, indicator,\
+        button_4, button_5, button_6, button_7, button_8, button_9, button_10, entry_1, slider, rb_a, rb_b, rbs, \
+        combo_box_leg, button_2
 
     OUTPUT_PATH = Path(__file__).parent
     ASSETS_PATH = OUTPUT_PATH / Path(fr"{str(OUTPUT_PATH)}\assets\frame0")
 
     def on_window_close():
         global stop_threads
+        if activation is True:
+            cadena = str(999)
+            arduino_lock.acquire()
+            time.sleep(0.02)
+            ser.write(cadena.encode('ascii'))
+            time.sleep(0.02)
+            arduino_lock.release()
         stop_threads = True
         window.destroy()
         window.quit()
@@ -160,79 +205,259 @@ def interface():
 
     def on_slider_changed(event):
         sv = slider.get()
-        # lbl.config(text=f"Valor seleccionado: {sv}")
 
     def send_last_value(event):
         global slider_value
-        slider_value = str(slider.get())
-        print(slider_value)
+        if selected_option == "Right":
+            slider_value = str(int(slider.get()) * -1)
+        elif selected_option == "Left":
+            slider_value = str(int(slider.get()) * 1)
+
+        if selected_option == "Right" or selected_option == "Left":
+            cadena = str(slider_value)
+            arduino_lock.acquire()
+            time.sleep(0.02)
+            ser.write(cadena.encode('ascii'))
+            time.sleep(0.02)
+            arduino_lock.release()
+            print(slider_value)
+
+    def on_radio_btns():
+        r_btn_selection = rbs.get()
+        if ser is not None:
+            if activation is True:
+                slider.set(0)
+                cadena = str(r_btn_selection)
+                arduino_lock.acquire()
+                time.sleep(0.02)
+                ser.write(cadena.encode('ascii'))
+                time.sleep(0.02)
+                arduino_lock.release()
+                button_9.config(state="normal")
 
     # Function to set serial connection
     def connect_btn():
         global connect
-        connect = 1
-        slider.set(0)
+        if ser is None:
+            if activation is False:
+                button_3.config(state="normal")
+                button_4.config(state="disabled")
+                button_5.config(state="normal")
+                button_10.config(state="normal")
+                connect = 1
+                slider.set(0)
 
     def close_btn():
-        global connect, ser, activation
+        global connect, ser, activation, config_mode_flag, study_mode_flag, ser, text, degr, degl
+        button_4.config(state="normal")
         connect = 2
         indicator.config(bg="gray")
+        config_mode_flag = False
+        study_mode_flag = False
+        degr = "0"
+        degl = "0"
+        text = ""
         slider.set(0)
+
         if ser is not None:
+            if activation is True:
+                cadena = str(999)
+                arduino_lock.acquire()
+                time.sleep(0.02)
+                ser.write(cadena.encode('ascii'))
+                time.sleep(0.02)
+                arduino_lock.release()
+                button_2.config(state="disabled")
+                button_5.config(state="disabled")
+                button_6.config(state="disabled")
+                button_7.config(state="disabled")
+                button_8.config(state="disabled")
+                button_9.config(state="disabled")
+                button_10.config(state="disabled")
+                entry_1.config(state="disabled")
+                slider.config(state="disabled")
+                rb_a.config(state="disabled")
+                rb_b.config(state="disabled")
+                rbs.set(None)
+                combo_box_leg.current(0)
+                combo_box_leg["state"] = "disabled"
+
             ser.close()
             ser = None
             activation = False
             window.is_plot_running = False
 
     def save_btn():
-        global degl,degr
+        global degl, degr, max_angle_right, max_angle_left, data_lst, position, set_degr, set_degl
         if config_mode_flag is True and study_mode_flag is False:
             if selected_option == "Right":
-                canvas.itemconfig(tagOrId=change_right, text=str(degr))
+                max_angle_right = round(float(set_degr) + position, 2)
+                canvas.itemconfig(tagOrId=change_right, text=str(max_angle_right))
             elif selected_option == "Left":
-                canvas.itemconfig(tagOrId=change_left, text=str(degl))
+                max_angle_left = round(float(set_degl) + position, 2)
+                canvas.itemconfig(tagOrId=change_left, text=str(max_angle_left))
+        elif config_mode_flag is False and study_mode_flag is True:
+            if selected_option == "Right":
+                if max_angle_right >= round(float(set_degr) + position, 2):
+                    attr = "No"
+                else:
+                    attr = "Yes"
+                data_lst.append([selected_option, max_angle_right, degr, "weight", attr])
+
+            elif selected_option == "Left":
+                if max_angle_left >= round(float(set_degl) + position, 2):
+                    attr = "No"
+                else:
+                    attr = "Yes"
+                data_lst.append([selected_option, max_angle_left, degl, "weight", attr])
+
+    def turn_on_motor():
+        slider.set(0)
+        if ser is not None:
+            if activation is True:
+                cadena = str(998)
+                arduino_lock.acquire()
+                time.sleep(0.02)
+                ser.write(cadena.encode('ascii'))
+                time.sleep(0.02)
+                arduino_lock.release()
+                button_8.config(state="normal")
+                button_9.config(state="disabled")
+                rb_a.config(state="disabled")
+                rb_b.config(state="disabled")
+                slider.config(state="normal")
+                combo_box_leg["state"] = "disabled"
+
+    def turn_off_motor():
+        slider.set(0)
+        if ser is not None:
+            if activation is True:
+                cadena = str(999)
+                arduino_lock.acquire()
+                time.sleep(0.02)
+                ser.write(cadena.encode('ascii'))
+                time.sleep(0.02)
+                arduino_lock.release()
+                slider.set(0)
+                button_8.config(state="disabled")
+                rb_a.config(state="normal")
+                rb_b.config(state="normal")
+                rbs.set(None)
+                slider.config(state="disabled")
+                combo_box_leg["state"] = "readonly"
+
+    def set_motor_origin():
+        global set_degr, set_degl
+        if ser is not None:
+            if activation is True:
+                cadena = str(997)
+                arduino_lock.acquire()
+                time.sleep(0.02)
+                ser.write(cadena.encode('ascii'))
+                time.sleep(0.02)
+                arduino_lock.release()
+                if selected_option == "Right":
+                    set_degr = float(degr)
+                elif selected_option == "Left":
+                    set_degl = float(degl)
+
+    def create_excel():
+        global _DIR, text, data_lst, excel_writer
+        if data_lst is not []:
+            _OUTPUT_DIR = _DIR + "/xls_output/"
+            file_name = text + ".xlsx"
+            df = pd.DataFrame(data_lst, columns=["Pierna", "Angulo Alcanzado", "Angulo maximo", "Peso aplicado", "Pasa?"])
+            excel_writer = pd.ExcelWriter(_OUTPUT_DIR + file_name, engine="openpyxl")
+            excel_writer.book = Workbook()
+            sheet_names = excel_writer.book.sheetnames
+            for sheet_name in sheet_names:
+                if sheet_name == "Sheet":
+                    del excel_writer.book[sheet_name]
+            df.to_excel(excel_writer, sheet_name="Hoja 1", index=False)
+            sheet = excel_writer.sheets["Hoja 1"]
+            header_fill = PatternFill(start_color="3366FF", end_color="3366FF", fill_type="solid")
+            header_font = Font(color="FFFFFF")
+
+            for cell in sheet["1:1"]:
+                cell.fill = header_fill
+                cell.font = header_font
+
+            for row in sheet.iter_rows(min_row=2, max_row=sheet.max_row, min_col=1, max_col=1):
+                for cell in row:
+                    if cell.value == "Left":
+                        cell.fill = PatternFill(start_color="00FF00", end_color="00FF00", fill_type="solid")  # Verde
+                    elif cell.value == "Right":
+                        cell.fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")  # Rojo
+
+            sheet.column_dimensions['A'].width = 20
+            sheet.column_dimensions['B'].width = 20
+            sheet.column_dimensions['C'].width = 20
+            sheet.column_dimensions['D'].width = 20
+            sheet.column_dimensions['E'].width = 20
+            excel_writer.close()
+            time.sleep(0.1)
+            data_lst = []
+            os.system(f'start excel "{_OUTPUT_DIR + file_name}"')
         else:
-            pass
+            print("MALAS NOTICIAS")
 
     def config_mode_btn():
         global config_mode_flag, study_mode_flag, ser, activation, connect, text, degr, degl
-        config_mode_flag = True
-        study_mode_flag = False
-        degr = "0"
-        degl = "0"
-        text = ""
-        slider.set(0)
-        canvas.itemconfig(tagOrId=change_right, text=degr)
-        canvas.itemconfig(tagOrId=change_left, text=degl)
-        canvas.itemconfig(tagOrId=cr_patient, text="")
-        button_3.config(state="disabled")  # close btn disable
-        button_4.config(state="disabled")  # config btn disable
-        button_5.config(state="disabled")  # config btn disable
-        button_6.config(state="normal")  # study btn enable
-        button_7.config(state="disabled")  # Export to excel btn disable
-        entry_1.config(state="normal")  # Entry text box enable
-        slider.config(state="disabled")  # slider disable
-        connect = 2
-        indicator.config(bg="gray")
+        # indicator.config(bg="gray")
         if ser is not None:
-            ser.close()
-            ser = None
-            activation = False
-            window.is_plot_running = False
+            if activation is True:
+                config_mode_flag = True
+                study_mode_flag = False
+                degr = "0"
+                degl = "0"
+                text = ""
+                combo_box_leg.current(0)
+                slider.set(0)
+                canvas.itemconfig(tagOrId=change_right, text=degr)
+                canvas.itemconfig(tagOrId=change_left, text=degl)
+                canvas.itemconfig(tagOrId=cr_patient, text="")
+                # button_3.config(state="disabled")  # close btn disable
+                # button_4.config(state="disabled")  # config btn disable
+                button_2.config(state="normal")
+                button_5.config(state="disabled")  # config btn disable
+                button_6.config(state="normal")  # study btn enable
+                button_7.config(state="disabled")  # Export to excel btn disable
+                button_8.config(state="disabled")
+                button_9.config(state="disabled")
+                entry_1.config(state="normal")  # Entry text box enable
+                slider.config(state="disabled")  # slider disable
+                rb_a.config(state="disabled")
+                rb_b.config(state="disabled")
+                rbs.set(None)
+                combo_box_leg["state"] = "readonly"
+                combo_box_leg.current(0)
+                connect = 2
+                cadena = str(999)
+                arduino_lock.acquire()
+                time.sleep(0.02)
+                ser.write(cadena.encode('ascii'))
+                time.sleep(0.02)
+                arduino_lock.release()
+            # ser.close()
+            # ser = None
+            # activation = False
+        window.is_plot_running = False
 
     def study_mode_btn():
         global config_mode_flag, study_mode_flag, text
 
-        if (float(degr) > 0 or float(degr) > 0) and text != "":
+        if (float(degr) > 0 or float(degl) > 0) and text != "":
             config_mode_flag = False
             study_mode_flag = True
             button_3.config(state="normal")  # close btn enable
-            button_4.config(state="normal")  # config btn enable
             button_5.config(state="normal")  # config btn enable
             button_6.config(state="disabled")  # study btn disable
             button_7.config(state="normal")  # Export to excel btn enable
             entry_1.config(state="disabled")  # Entry text box disable
-            slider.config(state="normal")  # slider enable
+            # slider.config(state="normal")  # slider enable
+            rb_a.config(state="normal")
+            rb_b.config(state="normal")
+            window.is_plot_running = True
 
     def open_folder():
         # get the directory within the current script
@@ -243,9 +468,10 @@ def interface():
         if rute:
             subprocess.Popen(["start", "", rute], shell=True)
 
-    class PlotUpdater:
+    class PlotUpdater1:
         def __init__(self, root):
             self.root = root
+            self.support1 = True
             self.fig, self.ax = plt.subplots(figsize=(6.4, 4))
             self.canvas = FigureCanvasTkAgg(self.fig, master=root)
             self.canvas.get_tk_widget().place(x=14, y=545)  # Ajusta las coordenadas x e y del gráfico
@@ -261,8 +487,9 @@ def interface():
 
         def update_plot(self):
             if self.root.is_plot_running:
+                self.support1 = True
                 self.data[:-1] = self.data[1:]
-                self.data[-1] = float(data)  # Extraer un solo elemento
+                self.data[-1] = myoware  # Extraer un solo elemento
                 # self.data[-1] = np.random.rand() * 10
                 self.time = np.append(self.time[1:], self.time[-1] + 0.2)
                 self.line.set_xdata(self.time)
@@ -273,7 +500,10 @@ def interface():
                 self.ax.set_xlim(self.time[0], self.time[-1] + 1)
                 self.canvas.draw()
             else:
-                self.reset_plot()
+                if self.support1 is True:
+                    self.reset_plot()
+                    self.support1 = False
+
             self.root.after(200, self.update_plot)  # Actualiza cada segundo
 
         def start_plot(self):
@@ -291,6 +521,61 @@ def interface():
             self.ax.set_xlabel("Eje X")  # Nombre del eje X
             self.ax.set_ylabel("Eje Y")  # Nombre del eje Y
             self.canvas.draw()  # Dibuja la nueva área de trazado
+            self.time = np.arange(-9, 1)
+
+    class PlotUpdater2:
+        def __init__(self, root):
+            self.root = root
+            self.support2 = True
+            self.fig, self.ax = plt.subplots(figsize=(6.4, 4))
+            self.canvas = FigureCanvasTkAgg(self.fig, master=root)
+            self.canvas.get_tk_widget().place(x=663, y=545)  # Ajusta las coordenadas x e y del gráfico
+            self.ax.set_xlim(0, 20)  # Modifica el rango del eje x
+            self.ax.set_ylim(0, 10)
+            self.ax.set_title("Título del Gráfico")  # Agrega título al gráfico
+            self.ax.set_xlabel("Eje X")  # Nombre del eje X
+            self.ax.set_ylabel("Eje Y")  # Nombre del eje Y
+            self.data = np.random.rand(10)
+            self.time = np.arange(10)
+            self.line, = self.ax.plot(self.time, self.data)
+            self.update_plot()
+
+        def update_plot(self):
+            if self.root.is_plot_running:
+                self.support2 = True
+                self.data[:-1] = self.data[1:]
+                self.data[-1] = torque  # Extraer un solo elemento
+                # self.data[-1] = np.random.rand() * 10
+                self.time = np.append(self.time[1:], self.time[-1] + 0.2)
+                self.line.set_xdata(self.time)
+                self.line.set_ydata(self.data)
+                self.ax.relim()
+                self.ax.autoscale_view()
+                # Ajustar los límites del eje x para que vaya de 0 a 20
+                self.ax.set_xlim(self.time[0], self.time[-1] + 1)
+                self.canvas.draw()
+            else:
+                if self.support2 is True:
+                    self.reset_plot()
+                    self.support2 = False
+            self.root.after(200, self.update_plot)  # Actualiza cada segundo
+
+        def start_plot(self):
+            self.root.is_plot_running = True
+
+        def stop_plot(self):
+            self.root.is_plot_running = False
+
+        def reset_plot(self):
+            self.ax.cla()  # Limpia el área de trazado
+            self.ax.set_xlim(0, 20)  # Reinicia el rango del eje x
+            self.ax.set_ylim(0, 10)  # Reinicia el rango del eje y
+            self.line, = self.ax.plot([], [])  # Crea una nueva línea vacía
+            self.ax.set_title("Título del Gráfico")  # Agrega título al gráfico
+            self.ax.set_xlabel("Eje X")  # Nombre del eje X
+            self.ax.set_ylabel("Eje Y")  # Nombre del eje Y
+            self.canvas.draw()  # Dibuja la nueva área de trazado
+            self.time = np.arange(-9, 1)
 
     class CameraViewer:
         def __init__(self, root, position_original=(0, 0), size_original=(640, 480),
@@ -375,20 +660,22 @@ def interface():
             return frame2_rgb
 
         def detect_knee(self, frame):
-            global degl, degr
+            global degl, degr, set_degr, set_degl, position
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             height, width, _ = frame_rgb.shape
             results = self.pose.process(frame_rgb)
             if results.pose_landmarks:
                 if selected_option == "Right":
                     degr, hip_xr, hip_yr, knee_xr, knee_yr, ankle_xr, ankle_yr = self.right_side(results, width, height)
-                    frame2_rgb = self.visualization(degr, hip_xr, hip_yr, knee_xr, knee_yr, ankle_xr, ankle_yr, frame)
+                    # final_degr = float(set_degr) + ((float(position) * 180) / math.pi)
+                    frame2_rgb = self.visualization(round(float(set_degr) + position, 2), hip_xr, hip_yr, knee_xr, knee_yr, ankle_xr, ankle_yr, frame)
                     return frame2_rgb
                 elif selected_option == "Left":
                     # X & Y coordinates
                     degl, hip_xl, hip_yl, knee_xl, knee_yl, ankle_xl, ankle_yl = self.left_side(results, width, height)
                     # Visualization
-                    frame2_rgb = self.visualization(degl, hip_xl, hip_yl, knee_xl, knee_yl, ankle_xl, ankle_yl, frame)
+                    # final_degl = float(set_degl) + ((float(position) * 180)/math.pi)
+                    frame2_rgb = self.visualization(round(float(set_degl) + position, 2), hip_xl, hip_yl, knee_xl, knee_yl, ankle_xl, ankle_yl, frame)
                     return frame2_rgb
             return frame_rgb
 
@@ -419,8 +706,9 @@ def interface():
     def relative_to_assets(path: str) -> Path:
         return ASSETS_PATH / Path(path)
 
+    global window
     window = Tk()
-    window.geometry("1574x950")
+    window.geometry("1900x950")
     window.configure(bg="white")
     window.protocol("WM_DELETE_WINDOW", on_window_close)
 
@@ -490,7 +778,8 @@ def interface():
         borderwidth=0,
         highlightthickness=0,
         command=save_btn,
-        relief="flat"
+        relief="flat",
+        state="disabled"
     )
     button_2.place(
         x=1329.0,
@@ -507,7 +796,7 @@ def interface():
         highlightthickness=0,
         command=close_btn,
         relief="flat",
-        state="disabled"
+        # state="disabled"
     )
     button_3.place(
         x=1000.0,
@@ -524,7 +813,7 @@ def interface():
         highlightthickness=0,
         command=connect_btn,
         relief="flat",
-        state="disabled"
+        # state="disabled"
     )
     button_4.place(
         x=1000.0,
@@ -559,7 +848,7 @@ def interface():
         highlightthickness=0,
         command=study_mode_btn,
         relief="flat",
-        state="normal"
+        state="disabled"
     )
     button_6.place(
         x=23.0,
@@ -573,13 +862,61 @@ def interface():
         image=button_image_7,
         borderwidth=0,
         highlightthickness=0,
-        command=lambda: print("button_7 clicked"),
+        command=create_excel,
         relief="flat",
         state="disabled"
     )
     button_7.place(
         x=1330.0,
         y=773.0,
+        width=230.0,
+        height=60.0
+    )
+    button_image_8 = PhotoImage(
+        file=relative_to_assets("button_8.png"))
+    button_8 = Button(
+        image=button_image_8,
+        borderwidth=0,
+        highlightthickness=0,
+        command=turn_off_motor,
+        relief="flat",
+        state="disabled"
+    )
+    button_8.place(
+        x=1585.0,
+        y=848.0,
+        width=230.0,
+        height=60.0
+    )
+    button_image_9 = PhotoImage(
+        file=relative_to_assets("button_9.png"))
+    button_9 = Button(
+        image=button_image_9,
+        borderwidth=0,
+        highlightthickness=0,
+        command=turn_on_motor,
+        relief="flat",
+        state="disabled"
+    )
+    button_9.place(
+        x=1585.0,
+        y=699.0,
+        width=230.0,
+        height=60.0
+    )
+    button_image_10 = PhotoImage(
+        file=relative_to_assets("button_10.png"))
+    button_10 = Button(
+        image=button_image_10,
+        borderwidth=0,
+        highlightthickness=0,
+        command=set_motor_origin,
+        relief="flat",
+        state="disabled"
+    )
+    button_10.place(
+        x=1585.0,
+        y=774.0,
         width=230.0,
         height=60.0
     )
@@ -595,7 +932,7 @@ def interface():
         bg="#D9D9D9",
         fg="#000716",
         highlightthickness=0,
-        state="normal"
+        state="disabled"
     )
     entry_1.bind('<Return>', on_enter_pressed)
     entry_1.place(
@@ -699,9 +1036,17 @@ def interface():
 
     canvas.create_text(
         1338,
-        425,
+        570,
         anchor="nw",
         text="Strength",
+        fill="#000000",
+        font=("Inter Black", 13 * -1)
+    )
+    canvas.create_text(
+        1338,
+        440,
+        anchor="nw",
+        text="Working Mode",
         fill="#000000",
         font=("Inter Black", 13 * -1)
     )
@@ -713,7 +1058,7 @@ def interface():
     )
     indicator.place(x=1250, y=60)
     # Add ComboBox
-    options = ["Right", "Left"]
+    options = ["None", "Right", "Left"]
     combo_box_leg = ttk.Combobox(
         window,
         values=options,
@@ -725,7 +1070,8 @@ def interface():
         width=220.0,
         height=60.0
     )
-
+    combo_box_leg["state"] = "disabled"
+    combo_box_leg.current(0)
     # Bind function show_selected_option to event <<ComboboxSelected>>
     combo_box_leg.bind("<<ComboboxSelected>>", show_selected_option)
 
@@ -751,19 +1097,30 @@ def interface():
 
     slider.place(
         x=1338.0,
-        y=450.0,
-        width=220,
+        y=600.0,
+        width=260,
         height=60
     )
     # lbl = tk.Label(window, text="Selected value: 0")
     # lbl.pack()
     slider.bind("<ButtonRelease-1>", send_last_value)
 
+    rbs = tk.StringVar()
+    rbs.set(None)
+
+    rb_a = tk.Radiobutton(window, text="Modo Liga", variable=rbs, value="a", command=on_radio_btns,
+                          state="disabled", font=("Arial", 18, "bold"), anchor='w')
+    rb_b = tk.Radiobutton(window, text="Torque constante", variable=rbs, value="b", command=on_radio_btns,
+                          state="disabled", font=("Arial", 18, "bold"), anchor='w')
+    rb_a.place(x=1338, y=460, width=260, height=30)
+    rb_b.place(x=1338, y=500, width=260, height=30)
+
     window.is_plot_running = False
     window.is_video_playing = True
     size_original = (640, 360)
     size_knee = (640, 360)
-    plot_updater = PlotUpdater(window)
+    plot_updater1 = PlotUpdater1(window)
+    plot_updater2 = PlotUpdater2(window)
     camera_viewer = CameraViewer(window, position_original=(14, 171), size_original=size_original,
                                  position_knee=(661, 171), size_knee=size_knee)
 
