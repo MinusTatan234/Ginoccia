@@ -38,6 +38,9 @@ set_degl = 0
 counter = 0
 rad = 0
 aux_lock = False
+dist = 0.22
+gravity = 9.81
+kg = 0
 
 
 data = ""
@@ -106,7 +109,7 @@ def read_serial_port(arduino):
     global activation, stop_threads, data, position, torque, myoware, counter, button_2,\
         indicator, window, connect, ser, config_mode_flag, study_mode_flag, text, degr, degl, indicator, \
         button_4, button_5, button_6, button_7, button_8, button_9, button_10, entry_1, slider, rb_a, rb_b, rbs, \
-        combo_box_leg, rad
+        combo_box_leg, rad, dist, gravity, kg
     try:
         while not stop_threads and activation is True:
             data = arduino.readline().decode().strip()
@@ -116,7 +119,8 @@ def read_serial_port(arduino):
                 if len(values) >= 2:
                     rad = abs(float(values[0]))
                     position = (rad * 180) / math.pi
-                    torque = float(values[1])
+                    torque = abs(float(values[1]))
+                    kg = (torque / dist) / gravity
                     myoware = float(values[2])
                 print(data)
             else:
@@ -234,6 +238,7 @@ def interface():
                 time.sleep(0.02)
                 arduino_lock.release()
                 button_9.config(state="normal")
+                print(r_btn_selection)
 
     # Function to set serial connection
     def connect_btn():
@@ -477,9 +482,9 @@ def interface():
             self.canvas.get_tk_widget().place(x=14, y=545)  # Ajusta las coordenadas x e y del gráfico
             self.ax.set_xlim(0, 20)  # Modifica el rango del eje x
             self.ax.set_ylim(0, 10)
-            self.ax.set_title("Título del Gráfico")  # Agrega título al gráfico
-            self.ax.set_xlabel("Eje X")  # Nombre del eje X
-            self.ax.set_ylabel("Eje Y")  # Nombre del eje Y
+            self.ax.set_title("EMG")  # Agrega título al gráfico
+            self.ax.set_ylabel("Voltage (V)")  # Nombre del eje X
+            self.ax.set_xlabel("Time (s)")  # Nombre del eje Y
             self.data = np.random.rand(10)
             self.time = np.arange(10)
             self.line, = self.ax.plot(self.time, self.data)
@@ -517,9 +522,9 @@ def interface():
             self.ax.set_xlim(0, 20)  # Reinicia el rango del eje x
             self.ax.set_ylim(0, 10)  # Reinicia el rango del eje y
             self.line, = self.ax.plot([], [])  # Crea una nueva línea vacía
-            self.ax.set_title("Título del Gráfico")  # Agrega título al gráfico
-            self.ax.set_xlabel("Eje X")  # Nombre del eje X
-            self.ax.set_ylabel("Eje Y")  # Nombre del eje Y
+            self.ax.set_title("EMG")  # Agrega título al gráfico
+            self.ax.set_ylabel("Voltage (V)")  # Nombre del eje X
+            self.ax.set_xlabel("Time (s)")  # Nombre del eje Y
             self.canvas.draw()  # Dibuja la nueva área de trazado
             self.time = np.arange(-9, 1)
 
@@ -532,9 +537,9 @@ def interface():
             self.canvas.get_tk_widget().place(x=663, y=545)  # Ajusta las coordenadas x e y del gráfico
             self.ax.set_xlim(0, 20)  # Modifica el rango del eje x
             self.ax.set_ylim(0, 10)
-            self.ax.set_title("Título del Gráfico")  # Agrega título al gráfico
-            self.ax.set_xlabel("Eje X")  # Nombre del eje X
-            self.ax.set_ylabel("Eje Y")  # Nombre del eje Y
+            self.ax.set_title("Applied Wight")  # Agrega título al gráfico
+            self.ax.set_ylabel("Kilograms (Kg)")  # Nombre del eje X
+            self.ax.set_xlabel("Time (s)")  # Nombre del eje Y
             self.data = np.random.rand(10)
             self.time = np.arange(10)
             self.line, = self.ax.plot(self.time, self.data)
@@ -544,7 +549,7 @@ def interface():
             if self.root.is_plot_running:
                 self.support2 = True
                 self.data[:-1] = self.data[1:]
-                self.data[-1] = torque  # Extraer un solo elemento
+                self.data[-1] = kg  # Extraer un solo elemento
                 # self.data[-1] = np.random.rand() * 10
                 self.time = np.append(self.time[1:], self.time[-1] + 0.2)
                 self.line.set_xdata(self.time)
@@ -571,9 +576,9 @@ def interface():
             self.ax.set_xlim(0, 20)  # Reinicia el rango del eje x
             self.ax.set_ylim(0, 10)  # Reinicia el rango del eje y
             self.line, = self.ax.plot([], [])  # Crea una nueva línea vacía
-            self.ax.set_title("Título del Gráfico")  # Agrega título al gráfico
-            self.ax.set_xlabel("Eje X")  # Nombre del eje X
-            self.ax.set_ylabel("Eje Y")  # Nombre del eje Y
+            self.ax.set_title("Applied Wight")  # Agrega título al gráfico
+            self.ax.set_ylabel("Kilograms (Kg)")  # Nombre del eje X
+            self.ax.set_xlabel("Time (s)")  # Nombre del eje Y
             self.canvas.draw()  # Dibuja la nueva área de trazado
             self.time = np.arange(-9, 1)
 
@@ -1108,9 +1113,9 @@ def interface():
     rbs = tk.StringVar()
     rbs.set(None)
 
-    rb_a = tk.Radiobutton(window, text="Modo Liga", variable=rbs, value="a", command=on_radio_btns,
+    rb_a = tk.Radiobutton(window, text="Spring Mode", variable=rbs, value="a", command=on_radio_btns,
                           state="disabled", font=("Arial", 18, "bold"), anchor='w')
-    rb_b = tk.Radiobutton(window, text="Torque constante", variable=rbs, value="b", command=on_radio_btns,
+    rb_b = tk.Radiobutton(window, text="Constant Torque", variable=rbs, value="b", command=on_radio_btns,
                           state="disabled", font=("Arial", 18, "bold"), anchor='w')
     rb_a.place(x=1338, y=460, width=260, height=30)
     rb_b.place(x=1338, y=500, width=260, height=30)
