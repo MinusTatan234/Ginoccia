@@ -16,6 +16,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 import os
 import pandas as pd
+import serial.tools.list_ports
 
 
 _DIR = os.path.dirname(__file__)
@@ -41,7 +42,7 @@ aux_lock = False
 dist = 0.22
 gravity = 9.81
 kg = 0
-
+cnt = 0
 
 data = ""
 selected_option = ""
@@ -57,12 +58,12 @@ excel_writer = None
 
 def serial_connection():
     # Create serial connection
-    global arduino_lock, connect, ser, activation, window
+    global arduino_lock, connect, ser, activation, window, combobox_com, selected_port
     while not stop_threads:
         if ser is None and connect == 1:
             while not stop_threads and connect == 1:
                 try:
-                    ser = serial.Serial('COM4', 115200, timeout=0.25)
+                    ser = serial.Serial(str(selected_port), 115200, timeout=0.25)
                     if ser is not None:
                         connect = 0
                         indicator.config(bg="green")
@@ -107,9 +108,9 @@ def serial_connection():
 # Function to read serial port
 def read_serial_port(arduino):
     global activation, stop_threads, data, position, torque, myoware, counter, button_2,\
-        indicator, window, connect, ser, config_mode_flag, study_mode_flag, text, degr, degl, indicator, \
+        indicator, window, connect, ser, config_mode_flag, study_mode_flag, text, degr, degl, \
         button_4, button_5, button_6, button_7, button_8, button_9, button_10, entry_1, slider, rb_a, rb_b, rbs, \
-        combo_box_leg, rad, dist, gravity, kg
+        combo_box_leg, rad, dist, gravity, kg, combobox_com
     try:
         while not stop_threads and activation is True:
             data = arduino.readline().decode().strip()
@@ -127,7 +128,7 @@ def read_serial_port(arduino):
                 counter = counter + 1
                 if counter >= 2:
                     slider.set(0)
-                    button_4.config(state="normal")
+                    button_4.config(state="disabled")
                     connect = 2
                     indicator.config(bg="gray")
                     config_mode_flag = False
@@ -150,6 +151,8 @@ def read_serial_port(arduino):
                     rbs.set(None)
                     combo_box_leg.current(0)
                     combo_box_leg["state"] = "disabled"
+                    combobox_com["state"] = "readonly"
+                    combobox_com.current(0)
                     ser.close()
                     ser = None
                     activation = False
@@ -175,9 +178,9 @@ def send_data(arduino):
 
 
 def interface():
-    global indicator, window, connect, ser, activation, config_mode_flag, study_mode_flag, text, degr, degl, indicator,\
+    global indicator, window, connect, ser, activation, config_mode_flag, study_mode_flag, text, degr, degl,\
         button_4, button_5, button_6, button_7, button_8, button_9, button_10, entry_1, slider, rb_a, rb_b, rbs, \
-        combo_box_leg, button_2
+        combo_box_leg, button_2, combobox_com
 
     OUTPUT_PATH = Path(__file__).parent
     ASSETS_PATH = OUTPUT_PATH / Path(fr"{str(OUTPUT_PATH)}\assets\frame0")
@@ -206,6 +209,22 @@ def interface():
         global selected_option
         selected_option = str(combo_box_leg.get())
         print(selected_option)
+
+    def get_com_ports():
+        com_ports = []
+        ports = serial.tools.list_ports.comports()
+        for port, desc, hwid in sorted(ports):
+            com_ports.append(port)
+        return com_ports
+
+    def update_combobox(event=None):
+        com_ports = get_com_ports()
+        combobox_com['values'] = ["None"] + com_ports
+
+    def show_selected_port(event):
+        global selected_port
+        selected_port = combobox_com.get()
+        button_4.config(state="normal")
 
     def on_slider_changed(event):
         sv = slider.get()
@@ -245,6 +264,7 @@ def interface():
         global connect
         if ser is None:
             if activation is False:
+                combobox_com["state"] = "disabled"
                 button_3.config(state="normal")
                 button_4.config(state="disabled")
                 button_5.config(state="normal")
@@ -263,6 +283,8 @@ def interface():
         degl = "0"
         text = ""
         slider.set(0)
+        combobox_com["state"] = "readonly"
+        combobox_com.current(0)
 
         if ser is not None:
             if activation is True:
@@ -407,10 +429,11 @@ def interface():
             print("MALAS NOTICIAS")
 
     def config_mode_btn():
-        global config_mode_flag, study_mode_flag, ser, activation, connect, text, degr, degl
+        global config_mode_flag, study_mode_flag, ser, activation, connect, text, degr, degl, cnt
         # indicator.config(bg="gray")
         if ser is not None:
             if activation is True:
+
                 config_mode_flag = True
                 study_mode_flag = False
                 degr = "0"
@@ -436,6 +459,11 @@ def interface():
                 rbs.set(None)
                 combo_box_leg["state"] = "readonly"
                 combo_box_leg.current(0)
+                if cnt != 0:
+                    combobox_com.current(0)
+                    combobox_com["state"] = "readonly"
+                cnt = cnt + 1
+
                 connect = 2
                 cadena = str(999)
                 arduino_lock.acquire()
@@ -804,7 +832,7 @@ def interface():
         # state="disabled"
     )
     button_3.place(
-        x=1000.0,
+        x=1030.0,
         y=90.0,
         width=230.0,
         height=60.0
@@ -818,10 +846,11 @@ def interface():
         highlightthickness=0,
         command=connect_btn,
         relief="flat",
+        state="disabled"
         # state="disabled"
     )
     button_4.place(
-        x=1000.0,
+        x=1030.0,
         y=9.0,
         width=230.0,
         height=60.0
@@ -925,6 +954,8 @@ def interface():
         width=230.0,
         height=60.0
     )
+    refresh_button = ttk.Button(window, text="Update", command=update_combobox)
+    refresh_button.place(x=780, y=120)
     entry_image_1 = PhotoImage(
         file=relative_to_assets("entry_1.png"))
     entry_bg_1 = canvas.create_image(
@@ -971,7 +1002,7 @@ def interface():
         font=("Inter Black", 13 * -1)
     )
     canvas.create_text(
-        420.0,
+        275.0,
         12.0,
         anchor="nw",
         text="Maximum configured angle of the left leg",
@@ -980,18 +1011,25 @@ def interface():
     )
 
     canvas.create_text(
-        707.0,
+        525.0,
         14.0,
         anchor="nw",
         text="Maximum configured angle of the right leg",
         fill="#000000",
         font=("Inter Black", 13 * -1)
     )
-
+    canvas.create_text(
+        780.0,
+        14.0,
+        anchor="nw",
+        text="Port to set connection",
+        fill="#000000",
+        font=("Inter Black", 13 * -1)
+    )
     image_image_5 = PhotoImage(
         file=relative_to_assets("image_5.png"))
     image_5 = canvas.create_image(
-        516.0,
+        375.0,
         83.0,
         image=image_image_5
     )
@@ -999,14 +1037,14 @@ def interface():
     image_image_6 = PhotoImage(
         file=relative_to_assets("image_6.png"))
     image_6 = canvas.create_image(
-        798.0,
+        625.0,
         83.0,
         image=image_image_6
     )
 
     change_right = canvas.create_text( #right
-        727.0,
-        73.0,
+        615.0,
+        70.0,
         anchor="nw",
         text="0",
         fill="#000000",
@@ -1014,8 +1052,8 @@ def interface():
     )
 
     change_left = canvas.create_text( #left
-        448.0,
-        66.0,
+        360.0,
+        70.0,
         anchor="nw",
         text="0",
         fill="#000000",
@@ -1061,7 +1099,7 @@ def interface():
         height=2,
         bg="gray"
     )
-    indicator.place(x=1250, y=60)
+    indicator.place(x=1265, y=60)
     # Add ComboBox
     options = ["None", "Right", "Left"]
     combo_box_leg = ttk.Combobox(
@@ -1086,6 +1124,24 @@ def interface():
             24,
             "bold"
         ),
+        justify="center",
+    )
+
+    # Crear el combobox
+    options = get_com_ports()
+    options = ["None"] + options
+    combobox_com = ttk.Combobox(
+        window,
+        values=options,
+        state="readonly",
+    )
+    combobox_com.place(x=780, y=53, width=220.0, height=60.0)
+    combobox_com["state"] = "readonly"
+    combobox_com.current(0)
+    combobox_com.bind("<<ComboboxSelected>>", show_selected_port)
+
+    combobox_com.configure(
+        font=("Inter", 24, "bold"),
         justify="center",
     )
 
